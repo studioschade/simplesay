@@ -117,8 +117,18 @@ minimal cross-platform stand-in (`say`/`espeak`/`spd-say`) to get started withou
 the above.
 
 ## Agent prompt (tag mode)
-The agent must wrap spoken text in `<say>…</say>` and keep code/tables/paths outside.
-See the Speech section of the agent's `AGENTS.md`. Stream mode needs no prompting.
+`stream` mode needs no prompting: the extension reads whatever the model writes
+normally. `tag` mode does need the model told what to do, since it only speaks text
+the agent explicitly wraps. Add something like this to the agent's system prompt or
+`AGENTS.md`:
+
+```markdown
+## Speech
+Wrap the parts of your response you want spoken aloud in `<say>...</say>`. Keep
+code, tables, file paths, and anything not meant to be heard outside the tags.
+Write the tagged text plainly, it will be spoken live as you write it and the tags
+are removed from the visible transcript afterward.
+```
 
 ## Limitations
 - Tag mode shows raw tags for the instant they stream, before the finalize rewrite
