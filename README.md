@@ -1,7 +1,7 @@
 # SimpleSay
 
 A Pi extension that voices an agent's replies automatically by watching the
-response stream. See [design.md](design.md) for the full design rationale.
+response stream.
 
 ## Why this is different
 
@@ -38,6 +38,31 @@ contract. Point it at anything, whether a local model, a cloud voice API, or
   tags are stripped from the transcript. Requires the agent to emit the markers.
 
 Switch at runtime: `/simplesay mode <tag|stream>`.
+
+## How it works
+- **Streaming input:** `pi.on("message_update")` delivers `assistantMessageEvent`, a
+  union whose text arrives as `{ type: "text_delta", delta }`. Deltas feed the active
+  mode's parser. Thinking and tool-call deltas are ignored, so neither is spoken.
+- **Tag parser:** accumulates streamed text, keeps a short tail on every delta so a
+  tag split across chunks is never missed, and speaks a span the moment `</say>`
+  arrives.
+- **Stream parser:** consumes complete lines, tracks fenced-code state, and flushes
+  a paragraph on the blank line that ends it, or at message end.
+- **Cleanup (`clean()`):** strips code blocks and spans, tables, `<say>` tags,
+  headers, emphasis markers, links, images, bare URLs, wikilinks, blockquotes,
+  bullets, and emoji, then collapses whitespace. Identifiers like `file_name` are
+  preserved. Provider-agnostic normalization (spelling out numbers or years, custom
+  lexicon) stays the endpoint's job, not the extension's.
+- **Dispatch:** `execFile(endpoint, ...)`, with no shell involved, so backticks,
+  `$(...)`, or quotes inside a reply can't break or execute anything. To avoid dead
+  air between utterances, synthesis is pipelined ahead of playback: each utterance
+  renders to a temp WAV (`SAY_OUT`) while the previous one is still playing, then
+  plays in order via `--play`. The next paragraph starts the instant the current one
+  finishes.
+- **Display rewrite (tag mode only):** `message_end` returns a replacement message
+  (`MessageEndEventResult.message`) with the tags removed. `message_update` is
+  live-only and can't be rewritten, so raw tags are visible for the instant they
+  stream before vanishing once the message finalizes.
 
 ## Speech endpoint
 SimpleSay ships no TTS engine. It shells out to a configurable endpoint with the
@@ -95,5 +120,11 @@ the above.
 The agent must wrap spoken text in `<say>…</say>` and keep code/tables/paths outside.
 See the Speech section of the agent's `AGENTS.md`. Stream mode needs no prompting.
 
+## Limitations
+- Tag mode shows raw tags for the instant they stream, before the finalize rewrite
+  removes them.
+- Settings don't persist across sessions, since Pi has no config store.
+- Tag mode depends on the model actually emitting the tags. That's reliable in
+  practice, but not enforceable the way a schema-validated tool call would be.
+
 - **Source:** `src/index.ts`
-- **Design:** `design.md`
