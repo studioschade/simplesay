@@ -1,8 +1,35 @@
 # SimpleSay
 
 A Pi extension that voices an agent's replies automatically by watching the
-response stream — built because local models miss tool calls, so an agent can't be
-relied on to call a `say` tool itself. See [design.md](design.md) for the rationale.
+response stream. See [design.md](design.md) for the full design rationale.
+
+## Why this is different
+
+Most voice systems — including ones from large AI companies — wait for the
+entire response to finish generating before speech starts. SimpleSay speaks
+**live, while the model is still writing**: the first paragraph or `<say>`
+span is already playing back before the reply is done streaming. No
+waiting on a full response, no separate "now read this back" pass.
+
+It also decides what's worth saying **without spending any tokens on the
+decision**. `stream` mode's skip logic (code blocks, tables, non-prose) is
+plain text parsing over the streamed output as it arrives — not a model
+call, not a tool the LLM has to remember to invoke, and nothing added to
+the context window to make it happen. The model just writes normally; the
+extension decides what's speech-worthy for free, out-of-band.
+
+`tag` mode goes a step further: instead of relying on tool-calling to
+trigger speech — which routinely fails on smaller local models that miss
+or malform tool calls — the agent just wraps text it wants spoken in
+`<say>…</say>`. Plain text markers are far more reliable than a structured
+tool call for a small model, and they give you direct, fine-grained control
+over phrasing and tone in the prompt itself, right down to models that
+couldn't reliably drive a `say` tool at all.
+
+Underneath both modes it's a deliberately small, unopinionated tool: no
+bundled TTS engine, no required cloud service, just a documented shell-out
+contract. Point it at anything — a local model, a cloud voice API, `espeak`
+— and wire up whatever behavior you want around it.
 
 ## Modes
 - **`stream`** (default): no tags, zero agent config — the reply is spoken paragraph by
