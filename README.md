@@ -1,7 +1,6 @@
 # SimpleSay
 
-A Pi extension that voices an agent's replies automatically by watching the
-response stream.
+[Pi](https://pi.dev) is a terminal coding agent that supports extensions, small TypeScript/JavaScript modules that hook into its lifecycle to add commands, tools, and behavior. SimpleSay is one such extension: it voices an agent's replies automatically by watching the response stream.
 
 ## Why this is different
 
