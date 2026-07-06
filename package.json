@@ -1,0 +1,10 @@
+{
+  "name": "simplesay-extension",
+  "version": "0.1.0",
+  "description": "Emoji-triggered voice streaming extension for Pi",
+  "type": "module",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "latest",
+    "typebox": "^0.30.0"
+  }
+}
