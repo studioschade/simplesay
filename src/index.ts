@@ -63,6 +63,7 @@ export default function (pi: ExtensionAPI) {
       .split(OPEN).join("").split(CLOSE).join("")                      // say tags
       .replace(/^\s*\|.*\|\s*$/gm, " ")                                // table rows
       .replace(/\$\$?([^$]*[\\^_][^$]*)\$\$?/g, " $1 ")                // unwrap $…$ math; leaves $5 currency
+      .replace(/[A-Z]:\\[\w\\.-]+/g, " ")                               // Windows paths (before backslash removal)
       .replace(/\\(?:rightarrow|to|longrightarrow|Rightarrow|implies|mapsto)\b/g, " to ")
       .replace(/\\(?:leftarrow|gets|longleftarrow|Leftarrow)\b/g, " from ")
       .replace(/\\[a-zA-Z]+\*?/g, " ")                                 // other LaTeX commands
@@ -78,6 +79,8 @@ export default function (pi: ExtensionAPI) {
       .replace(/^\s*[-*+]\s+/gm, "")                                   // bullets
       .replace(/^\s*>\s?/gm, "")                                       // blockquotes
       .replace(/https?:\/\/\S+/g, " ")                                 // bare URLs
+      .replace(/(?:\.\/|\.\.\/)[\w/.-]+/g, " ")                         // relative paths (./file, ../file) - before Unix paths
+      .replace(/(?:\/[\w.-]+){2,}/g, " ")                               // Unix file paths (2+ segments)
       .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, "")
       .replace(/\s+/g, " ")
       .trim();
