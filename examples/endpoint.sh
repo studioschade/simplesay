@@ -1,35 +1,174 @@
 #!/bin/bash
 
-# SimpleSay Mock Endpoint
+# SimpleSay TTS Endpoint with Config-Driven Provider Selection
 # Usage: ./endpoint.sh [--agent <name>] "<text>"
+#        ./endpoint.sh --play <wavfile>
+#
+# This endpoint reads configuration from tts.conf (in the same directory)
+# and supports multiple TTS providers: piper, espeak-ng, pico2wave
 
-AGENT_NAME="unknown"
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${SCRIPT_DIR}/tts.conf"
+
+# Load configuration
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+else
+    echo "[Endpoint] Warning: Config file not found at $CONFIG_FILE, using defaults"
+    TTS_PROVIDER="espeak-ng"
+    ESPEAK_VOICE="en-us"
+    ESPEAK_SPEED=150
+fi
+
+# Auto-detect audio player if not specified
+if [ -z "$AUDIO_PLAYER" ]; then
+    if command -v pw-play &> /dev/null; then
+        AUDIO_PLAYER="pw-play"
+    elif command -v paplay &> /dev/null; then
+        AUDIO_PLAYER="paplay"
+    elif command -v aplay &> /dev/null; then
+        AUDIO_PLAYER="aplay"
+    else
+        echo "[Endpoint] Error: No audio player found (pw-play, paplay, or aplay)"
+        exit 1
+    fi
+fi
 
 # Parse arguments
+AGENT_NAME="unknown"
+PLAY_MODE=false
+TEXT=""
+WAV_FILE=""
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --agent) AGENT_NAME="$2"; shift ;;
-        *) TEXT="$1" ;;
+        --agent)
+            AGENT_NAME="$2"
+            shift 2
+            ;;
+        --play)
+            PLAY_MODE=true
+            WAV_FILE="$2"
+            shift 2
+            ;;
+        *)
+            TEXT="$1"
+            shift
+            ;;
     esac
-    shift
 done
 
+# Play mode: just play the WAV file
+if [ "$PLAY_MODE" = true ]; then
+    if [ -z "$WAV_FILE" ] || [ ! -f "$WAV_FILE" ]; then
+        echo "[Endpoint] Error: WAV file not found: $WAV_FILE"
+        exit 1
+    fi
+    $AUDIO_PLAYER "$WAV_FILE" 2>/dev/null
+    exit 0
+fi
+
+# Text-to-speech mode
 if [ -z "$TEXT" ]; then
-    echo "Error: No text provided."
+    echo "[Endpoint] Error: No text provided."
     exit 1
 fi
 
-echo "[Endpoint] Agent: $AGENT_NAME"
-echo "[Endpoint] Speaking: $TEXT"
+# Function to generate WAV using Piper
+generate_piper() {
+    local text="$1"
+    local output="$2"
+    local voice_path="${PIPER_VOICES_DIR}/${PIPER_VOICE}.onnx"
+    
+    if [ ! -x "$PIPER_BIN" ]; then
+        echo "[Endpoint] Error: Piper binary not found at $PIPER_BIN"
+        return 1
+    fi
+    
+    if [ ! -f "$voice_path" ]; then
+        echo "[Endpoint] Error: Piper voice not found at $voice_path"
+        return 1
+    fi
+    
+    echo "$text" | "$PIPER_BIN" --model "$voice_path" --output_file "$output" 2>/dev/null
+}
 
-# Use the system 'say' command (common on macOS)
-# On Linux, you might use 'espeak' or 'spd-say'
-if command -v say &> /dev/null; then
-    say "$TEXT"
-elif command -v espeak &> /dev/null; then
-    espeak "$TEXT"
-elif command -v spd-say &> /dev/null; then
-    spd-say "$TEXT"
+# Function to generate WAV using espeak-ng
+generate_espeak() {
+    local text="$1"
+    local output="$2"
+    
+    if ! command -v espeak-ng &> /dev/null; then
+        echo "[Endpoint] Error: espeak-ng not found"
+        return 1
+    fi
+    
+    espeak-ng -v "$ESPEAK_VOICE" -s "$ESPEAK_SPEED" "$text" --stdout > "$output" 2>/dev/null
+}
+
+# Function to generate WAV using pico2wave
+generate_pico2wave() {
+    local text="$1"
+    local output="$2"
+    
+    if ! command -v pico2wave &> /dev/null; then
+        echo "[Endpoint] Error: pico2wave not found"
+        return 1
+    fi
+    
+    pico2wave -l "$PICO2WAVE_LANG" -w "$output" "$text" 2>/dev/null
+}
+
+# Generate WAV based on provider
+if [ -n "$SAY_OUT" ]; then
+    # Generate to specified output file
+    case "$TTS_PROVIDER" in
+        piper)
+            generate_piper "$TEXT" "$SAY_OUT"
+            ;;
+        espeak-ng)
+            generate_espeak "$TEXT" "$SAY_OUT"
+            ;;
+        pico2wave)
+            generate_pico2wave "$TEXT" "$SAY_OUT"
+            ;;
+        *)
+            echo "[Endpoint] Error: Unknown TTS provider: $TTS_PROVIDER"
+            exit 1
+            ;;
+    esac
+    
+    if [ ! -f "$SAY_OUT" ] || [ ! -s "$SAY_OUT" ]; then
+        echo "[Endpoint] Error: Failed to generate WAV file"
+        exit 1
+    fi
 else
-    echo "[Endpoint] No TTS command found (say, espeak, spd-say). Text: $TEXT"
+    # Generate to temp file and play
+    TEMP_WAV=$(mktemp /tmp/simplesay_XXXXXX.wav)
+    trap "rm -f '$TEMP_WAV'" EXIT
+    
+    case "$TTS_PROVIDER" in
+        piper)
+            generate_piper "$TEXT" "$TEMP_WAV"
+            ;;
+        espeak-ng)
+            generate_espeak "$TEXT" "$TEMP_WAV"
+            ;;
+        pico2wave)
+            generate_pico2wave "$TEXT" "$TEMP_WAV"
+            ;;
+        *)
+            echo "[Endpoint] Error: Unknown TTS provider: $TTS_PROVIDER"
+            exit 1
+            ;;
+    esac
+    
+    if [ ! -f "$TEMP_WAV" ] || [ ! -s "$TEMP_WAV" ]; then
+        echo "[Endpoint] Error: Failed to generate WAV file"
+        exit 1
+    fi
+    
+    $AUDIO_PLAYER "$TEMP_WAV" 2>/dev/null
 fi

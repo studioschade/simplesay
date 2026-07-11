@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
-import { unlink } from "node:fs";
+import { unlink, realpathSync } from "node:fs";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -26,7 +26,13 @@ export default function (pi: ExtensionAPI) {
   // no env var set, falls back to the bundled example endpoint shipped in
   // this repo (../examples/endpoint.sh), resolved relative to this file so
   // it works regardless of CWD.
-  const bundledDefault = join(dirname(fileURLToPath(import.meta.url)), "..", "examples", "endpoint.sh");
+  // Resolve symlinks so the path works when the extension is symlinked
+  // into pi's extensions dir (e.g. ~/.pi/agent/extensions/simplesay.ts →
+  // /path/to/simplesay/src/index.ts). Without realpathSync, import.meta.url
+  // points to the symlink location, not the real file, so the relative
+  // path to examples/endpoint.sh breaks.
+  const realPath = realpathSync(fileURLToPath(import.meta.url));
+  const bundledDefault = join(dirname(realPath), "..", "examples", "endpoint.sh");
   let endpoint = process.env.SIMPLESAY_ENDPOINT ?? bundledDefault;
   let agentFlag = true;
 
